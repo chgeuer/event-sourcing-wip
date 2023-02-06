@@ -52,21 +52,29 @@ The following approach will help with the second and third requirement (we handl
 
 > In this article, I use the term 'event sourcing' quite liberal: Simply speaking, all configuration change events in the system change a certain part of the overall state. 
 
-Let's introduce event sourcing by using the simple analogy of a bank account: When a customer opens an account (which is the very first event), the account has a zero balance. When the customer receives money (a second event), the account balance is increased by the given amount. When the customer wires money to a friend, this third event in the ledger results in having a lower account balance again. The different events (account creation, credit and debit transactions, account closure) represent the banking-specific (domain) event, with the current account balance being the 'state' of the account. Replaying (sourcing) all the events, in the order in which they appeared, always brings leads to the same result. 
+Let's introduce event sourcing by using the simple analogy of a bank account: When a customer opens an account (which is the very first event), the account has a zero balance. When the customer receives money (a second event), the account balance is increased by the given amount. When the customer wires money to a friend, this third event in the ledger results in having a lower account balance again. The different events (account creation, credit and debit transactions, account closure) represent the banking-specific (domain) events. The account's current balance represents the 'state' of the account. Replaying (sourcing) all the events from the beginning, in the order in which they appeared, always brings leads to the same result. 
 
 #### An "append-only log" data structure and service
 
-In our architecture, we start to 'replace' the configuration database with an 'append-only log' data structure. 
+As first step in refactoring the architecture, we 'replace' the configuration database with an 'append-only log' data structure. 
 
-> The term *'log'* does not refer to log file entries (like an HTTP request log), but should be interpreted like the "captain's log" on a ship, in which all important events are written down. 
+> The term *'log'* does not refer to log file entries (like an HTTP request log), but should be interpreted like the "captain's log" on a ship, in which all important events are written down sequentially, and historic records (the past) is not modified. 
 
-'Append-only' means that previously written events are not modified by newly arriving events, instead new events are appended at the end of the log structure. Given that this append-only log must be read by all the web application servers, it must be centrally hosted by a service. Typical implementations of such a service include Apache Kafka, and Azure Event Hubs. 
+'Append-only' means that previously written events are not modified by newly arriving events, instead new events are appended at the end of the log structure. Given that this append-only log must be read by all the web application servers, it must be centrally hosted by a service. Typical implementations of such a service include Apache Kafka, RabbitMQ Streams, or Azure Event Hubs. 
+
+> Such an event stream could loosely be compared to a database's transaction log, in which all state changes to the various database tables are recorded sequentially as well. Replaying the transaction log allows the reconstruction of the database state, like in event sourcing.
+
+The illustration below demonstrates the concept: The configuration source emits state update events into Event Hub, and all running web app nodes receive (pull) their individual copy of these changes. When sending (enqueueing, appending) new messages into Event Hub, each message get's a unique **sequence number** assigned, a strictly monotonic increasing integer that uniquely identifies the message. 
+
+
 
 ![03-EventSourcing-Pure](2023-01-25--event-sourcing-1_03-EventSourcing-Pure.png)
 
 #### Pulling events into the application
 
-In our updated architecture above, we augment the application with an active component, that pulls a copy of the stream of events from the append-only log structure (Azure Event Hubs service), and locally applies these updates / deltas to the local copy of the configuration state. 
+In our updated architecture above, we augment the application with an active component, that pulls a copy of the stream from the append-only log structure (Azure Event Hubs service), and locally applies these events / updates / deltas to the local copy of the configuration state. 
+
+Each received event locally updates the cached state within the application, so that a new 
 
 
 
