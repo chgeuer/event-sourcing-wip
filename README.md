@@ -64,17 +64,37 @@ As first step in refactoring the architecture, we 'replace' the configuration da
 
 > Such an event stream could loosely be compared to a database's transaction log, in which all state changes to the various database tables are recorded sequentially as well. Replaying the transaction log allows the reconstruction of the database state, like in event sourcing.
 
-The illustration below demonstrates the concept: The configuration source emits state update events into Event Hub, and all running web app nodes receive (pull) their individual copy of these changes. When sending (enqueueing, appending) new messages into Event Hub, each message get's a unique **sequence number** assigned, a strictly monotonic increasing integer that uniquely identifies the message. 
+#### Event Hub: partitions, sequence numbers and offsets
 
-
-
-![03-EventSourcing-Pure](2023-01-25--event-sourcing-1_03-EventSourcing-Pure.svg)
+An Event Hub internally has one or more '[partitions](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-scalability#partitions)'. A partition can be thought of as a unit of compute that hosts a single append-only commit log. When sending a message to the Event Hub endpoint, the sender can specify a 'partition key', which is a hashing function that maps the message to one of the partitions. All messages with the same partition key end up in the same partition,in which they are strictly ordered. Each message in a partition get's assigned a unique **sequence number**, a strictly monotonic increasing integer that uniquely identifies the message. For example, the very first message ever in a given partition would have sequence number #0, and the next message would have sequence number #1, and so on.
 
 #### Pulling events into the application
 
-In our updated architecture above, we augment the application with an active component, that pulls a copy of the stream from the append-only log structure (Azure Event Hubs service), and locally applies these events / updates / deltas to the local copy of the configuration state. 
+The illustration demonstrates the concept: The configuration source emits state update events into Event Hub (step c), and all running web app nodes receive (pull) their individual copy of these changes (steps d). We augment the application with an active component, that pulls a copy of the stream from the append-only log structure (Azure Event Hubs service), and locally applies these events / updates / deltas to the local copy of the configuration state. 
 
-Each received event locally updates the cached state within the application, so that a new 
+![03-EventSourcing-Pure](2023-01-25--event-sourcing-1_03-EventSourcing-Pure.svg)
+
+The active component in the application needs to keep track of sequence numbers, so that the events are processed in the correct order, each event is processed exactly once, and no events are missed.
+
+The following illustration demonstrates the foundational principle: 
+
+- The system starts with an 'empty' (null) state, represented by the document with the `⌀` symbol. 
+- We have a function `f()`, which takes in the previous state (`s`) and an event (`e'`), and generates the next version of the state (`s'`). So the equation is `s' := f(s, e')`. For example, `s_500  = f(s_499, e_500)`, i.e. the event #500 would transform state #499 into state #500.
+- The very first event in the partition (`#0`) is applied to the empty `⌀` state, generating `state #0`, and so forth. Each new event would create a corresponding newer version of the state.
+
+
+
+![07-EventSourcing-Start](2023-01-25--event-sourcing-1_07-EventSourcing-Start.svg)
+
+
+
+#### Resuming operations
+
+The state of the system depends on all events, ever received in the past. To compute the most recent state, one would have to start with an empty state store, and then re-play all events, from the beginning of time, until today. For practical applications, that would be an unacceptable approach: When a new node in the web app joins the cluster, it would be impractical to re-process configuration changes from months ago, just to have an up-to-date understanding of the latest configuration. 
+
+In practice, there's a simple optimization: create state snapshots on a regular cadence. A snapshot is a (versioned) copy of the state. It might say "This file contains 'state #314', and describes how the state looked like after applying all events #0--#314". 
+
+
 
 
 
@@ -96,7 +116,7 @@ DataPump](
 
 EventSourcing-Start
 
-![07-EventSourcing-Start](2023-01-25--event-sourcing-1_07-EventSourcing-Start.svg)
+
 
 
 
