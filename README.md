@@ -14,7 +14,7 @@ Querying the configuration source on a per-request basis ensures to always work 
 
 The diagram below describes our starting point, with the client sending requests to the load balancer (a), the load balancer distributing incoming requests to the application servers running the web application (b), and the web application querying both the configuration source (c), as well as the external dependencies (d). The *configuration source* abstractly represents the actor that changes the configuration, which could be business administrators, or automated processes.
 
-![01-Regular-SQL](2023-01-25--event-sourcing-1_01-Regular-SQL.png)
+![01-Regular-SQL](2023-01-25--event-sourcing-1_01-Regular-SQL.svg)
 
 ### Caching in the ORM
 
@@ -22,7 +22,7 @@ Accessing a relational database like our configuration database often is impleme
 
 In the diagram below, we represent the ORM as a 'local cache' inside the web application:
 
-![02-Cached-SQL](2023-01-25--event-sourcing-1_02-Cached-SQL.png)
+![02-Cached-SQL](2023-01-25--event-sourcing-1_02-Cached-SQL.svg)
 
 #### Going to extremes - Caching the whole database
 
@@ -68,7 +68,7 @@ The illustration below demonstrates the concept: The configuration source emits 
 
 
 
-![03-EventSourcing-Pure](2023-01-25--event-sourcing-1_03-EventSourcing-Pure.png)
+![03-EventSourcing-Pure](2023-01-25--event-sourcing-1_03-EventSourcing-Pure.svg)
 
 #### Pulling events into the application
 
@@ -80,7 +80,7 @@ Each received event locally updates the cached state within the application, so 
 
 EventSourcing-with
 
-![04-EventSourcing-with-Snapshots](2023-01-25--event-sourcing-1_04-EventSourcing-with-Snapshots.png)
+![04-EventSourcing-with-Snapshots](2023-01-25--event-sourcing-1_04-EventSourcing-with-Snapshots.svg)
 
 
 
@@ -88,7 +88,7 @@ EventSourcing-with
 
 DataPump](
 
-![05-DataPump](2023-01-25--event-sourcing-1_05-DataPump.png)
+![05-DataPump](2023-01-25--event-sourcing-1_05-DataPump.svg)
 
 
 
@@ -96,7 +96,7 @@ DataPump](
 
 EventSourcing-Start
 
-![07-EventSourcing-Start](2023-01-25--event-sourcing-1_07-EventSourcing-Start.png)
+![07-EventSourcing-Start](2023-01-25--event-sourcing-1_07-EventSourcing-Start.svg)
 
 
 
@@ -104,7 +104,7 @@ EventSourcing-Start
 
 EventSourcing-ResumeHot
 
-![08-EventSourcing-ResumeHot](2023-01-25--event-sourcing-1_08-EventSourcing-ResumeHot.png)
+![08-EventSourcing-ResumeHot](2023-01-25--event-sourcing-1_08-EventSourcing-ResumeHot.svg)
 
 
 
@@ -112,7 +112,7 @@ EventSourcing-ResumeHot
 
 09-EventSourcing
 
-![09-EventSourcing-ResumeFromCapture](2023-01-25--event-sourcing-1_09-EventSourcing-ResumeFromCapture.png)
+![09-EventSourcing-ResumeFromCapture](2023-01-25--event-sourcing-1_09-EventSourcing-ResumeFromCapture.svg)
 
 ## Links
 
