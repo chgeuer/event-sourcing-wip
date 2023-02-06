@@ -142,5 +142,6 @@ However, the storage container configured for Event Hubs Capture contains Avro (
 
 ## Links
 
-- [Event Sourcing pattern - Azure Architecture Center | Microsoft Learn](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing)
-- 
+- [Event Sourcing pattern (Azure Architecture Center)](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing)
+- [Event Sourcing, Greg Young, GOTO 2014](https://www.youtube.com/watch?v=8JKjvY4etTY)
+- [Why Event Sourcing is not easy, Mateusz Kubuszok, Lambda Days 2022](https://www.youtube.com/watch?v=eitMBfZgaBA)
