@@ -82,57 +82,63 @@ The following illustration demonstrates the foundational principle:
 - We have a function `f()`, which takes in the previous state (`s`) and an event (`e'`), and generates the next version of the state (`s'`). So the equation is `s' := f(s, e')`. For example, `s_500  = f(s_499, e_500)`, i.e. the event #500 would transform state #499 into state #500.
 - The very first event in the partition (`#0`) is applied to the empty `⌀` state, generating `state #0`, and so forth. Each new event would create a corresponding newer version of the state.
 
-
-
 ![07-EventSourcing-Start](2023-01-25--event-sourcing-1_07-EventSourcing-Start.svg)
 
+#### Continuously following new messages
 
+Append-only log structures usually offer a mechanism to continuously be notified about new messages arriving at the end of the log. In a Unix-based system, one would use `tail -f /var/log/messages` to 'follow the tail' of the log file, i.e. to continuously see when new lines are appended to the log file. In Azure Event Hubs, the client can remain connected to the Event Hub via a protocol such as AMQP or AMQP over Web Sockets, so that newly arriving messages get distributed to the consumers with minimal latency.
 
 #### Resuming operations
 
-The state of the system depends on all events, ever received in the past. To compute the most recent state, one would have to start with an empty state store, and then re-play all events, from the beginning of time, until today. For practical applications, that would be an unacceptable approach: When a new node in the web app joins the cluster, it would be impractical to re-process configuration changes from months ago, just to have an up-to-date understanding of the latest configuration. 
+The state of the system depends on all events, ever received in the past. To compute the most recent state, one would have to start with an empty state store, and then re-play all events, from the beginning of time, until today. For practical purposes, that would be an unacceptable approach: when a new node in the web app joins the cluster, it would have to re-process configuration changes from months ago, just to have an up-to-date understanding of the latest configuration. 
 
-In practice, there's a simple optimization: create state snapshots on a regular cadence. A snapshot is a (versioned) copy of the state. It might say "This file contains 'state #314', and describes how the state looked like after applying all events #0--#314". 
+In practice, there's a simple optimization: create state snapshots on a regular cadence. A snapshot is a (versioned) copy of the serialized state. It might say 
 
+>  This file contains 'state #314', and describes how the state looked like after applying all events #0--#314.
 
-
-
-
-EventSourcing-with
+To bring snapshot generation into the architecture, we introduce the "snapshot generation" component:
 
 ![04-EventSourcing-with-Snapshots](2023-01-25--event-sourcing-1_04-EventSourcing-with-Snapshots.svg)
 
+That component regularly computes the most recent snapshot, and serializes the state into a file in object storage, such as Azure Blob storage.
 
+When a new (uninitialized) web app node starts (or the snapshot generator itself), it first reads the most-recent state snapshot from snapshot storage. That state file carries metadata about which *sequence number* the snapshot corresponds to. After de-serializing the state, the service positions its 'read pointer' at the right sequence number in the Event Hub partition. 
 
-
-
-DataPump](
-
-![05-DataPump](2023-01-25--event-sourcing-1_05-DataPump.svg)
-
-
-
-
-
-EventSourcing-Start
-
-
-
-
-
-
-
-EventSourcing-ResumeHot
+The following diagram describes that process. After reading the state #314, the component starts reading the events #315 onwards, and applies them as well, to continuously compute to the most up-to-date representation of the state.
 
 ![08-EventSourcing-ResumeHot](2023-01-25--event-sourcing-1_08-EventSourcing-ResumeHot.svg)
 
 
 
+#### Implementation internals
 
+The internal component running in the web app could be represented like this: The function `f()` is initially fed with the most recent snapshot, and continuously feeds back the most recent state into itself, alongside with the events coming off Event Hub. The most recent state could be served within the memory of the application, such as via a global read-only property or a function call. 
 
-09-EventSourcing
+Applying a state update event to the state might touch upon multiple areas of the state data structure. For example, a single update might change two or three data locations within the state type. The analogy in the database world be a transaction, that updates multiple tables or rows. It is important that the web application 'sees' a consistent view of the world, e.g. the state as it corresponded to event #314 or #315, but nothing in-between.
+
+> Using a functional programming language with immutable (unmodifiable) data structures can be of great help here. Examples of such languages could be F#, Scala, Rust or Elixir. While the term "immutable data structure" might sound wasteful or not very useful, it refers to the programming language's ability to represent state transitions. One can say "Give me a copy of this immutable object, with that property here having a different value". Such property modifications, alongside with the fact that large parts of the state might not change, allow to re-use large parts of the object graph.
+
+![05-DataPump](2023-01-25--event-sourcing-1_05-DataPump.svg)
+
+### Historic events and Event Hub Capture
+
+The amount of events going into an append-only log data structure can potentially be huge. Therefore, the service operator needs to consider how to deal with this data growth. For example, in an Apache Kafka cluster, one might choose to 'just let it grow' and attach some more hard drives, keeping all the information around. Another approach to handle this challenge is 'log compaction', in which older messages get deleted from a partition. 
+
+Azure Event Hub address this challenge by setting a 'message retention' or '[event retention](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-features#event-retention)' period. Messages that are older than this period get removed from the Event Hub partition and a reader can no longer 'seek' to them and read them off the partition. The shortest duration is 24 hours, i.e. all messages that arrived within that time period for sure are readable in the partition. Older messages (like last week's ones) won't be available here. The maximum retention period varies between 7 days (for Event Hubs Standard) and 90 days (for the Premium and Dedicated SKUs).
+
+In our Event Sourcing system, it might be necessary to read messages that are older than the retention period. For example, if the snapshot generator did not run for a longer period of time, the stored snapshots might too old. To help with that problem, **Event Hub Capture** can be enabled to fully keep track of the entire history. Enabling the Event Hub Capture feature forces the Event Hub service to regularly write older messages as Apache Avro- or Parquet-formatted files into Azure Blob storage. 
+
+The following diagram illustrates the practical use:
 
 ![09-EventSourcing-ResumeFromCapture](2023-01-25--event-sourcing-1_09-EventSourcing-ResumeFromCapture.svg)
+
+In this situation, the most recent state snapshot corresponds to event #409, i.e. the next event that must be processed during state updates would be event #410 and following. Unfortunately, the oldest event in the Event Hub partition is event #412, i.e. the events #410 and and #411 cannot be read from Event Hub directly. 
+
+However, the storage container configured for Event Hubs Capture contains Avro (or Parquet) files containing these events. So after feeding the 2 rather old events into the pipeline, the logic can 'flip over' to the Event Hubs endpoint for the more recent events.
+
+## Summary
+
+
 
 ## Links
 
