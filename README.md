@@ -14,7 +14,7 @@ Querying the configuration source on a per-request basis ensures to always work 
 
 The diagram below describes our starting point, with the client sending requests to the load balancer (a), the load balancer distributing incoming requests to the application servers running the web application (b), and the web application querying both the configuration source (c), as well as the external dependencies (d). The *configuration source* abstractly represents the actor that changes the configuration, which could be business administrators, or automated processes.
 
-![01-Regular-SQL](2023-01-25--event-sourcing-1_01-Regular-SQL.svg)
+![01-Regular-SQL](img/2023-01-25--event-sourcing-1_01-Regular-SQL.svg)
 
 ### Caching in the ORM
 
@@ -22,7 +22,7 @@ Accessing a relational database like our configuration database often is impleme
 
 In the diagram below, we represent the ORM as a 'local cache' inside the web application:
 
-![02-Cached-SQL](2023-01-25--event-sourcing-1_02-Cached-SQL.svg)
+![02-Cached-SQL](img/2023-01-25--event-sourcing-1_02-Cached-SQL.svg)
 
 #### Going to extremes - Caching the whole database
 
@@ -36,7 +36,7 @@ Unfortunately, this approach brings significant downsides:
 - **Database load:** You must also consider the load patterns on the database: During such a scale-out event, a potentially large number of servers will intensely query the database at the same time, potentially overloading the database. So a 'trampling herd' of customers in the web tier, leading to a scale-out action, might lead to a trampling herd of web servers bringing the database down.
 - **Configuration updates:** Runtime updates to the configuration database are not reaching the web application any longer: When everything is cached in RAM, and the ORM no longer queries the database, it might not pull updated data from the configuration database into the application. In the past, we have seen customers who "solved" this problem by rebooting all web servers, one after the other, thus forcing each web server to re-download the entire database *again*, with the updated configuration.
 
-### Introducing Event Sourcing into the architecture
+## Introducing Event Sourcing into the architecture
 
 In this web application, the configuration information should be completely kept in the working set, but we want to avoid the aforementioned disadvantages: 
 
@@ -48,13 +48,17 @@ The application should ...
 
 The following approach will help with the second and third requirement (we handle quick startup in the next step):
 
-#### Event sourcing
+### Event sourcing
 
-> In this article, I use the term 'event sourcing' quite liberal: Simply speaking, all configuration change events in the system change a certain part of the overall state. 
+The original definition of Event Sourcing is to 
+
+> *Capture all changes to an application state as a sequence of events.* ([src](https://martinfowler.com/eaaDev/EventSourcing.html))
+
+In this article, we'll be using the term 'event sourcing' quite liberal: Simply speaking, all configuration change events in the system change a certain part of the overall state. In part
 
 Let's introduce event sourcing by using the simple analogy of a bank account: When a customer opens an account (which is the very first event), the account has a zero balance. When the customer receives money (a second event), the account balance is increased by the given amount. When the customer wires money to a friend, this third event in the ledger results in having a lower account balance again. The different events (account creation, credit and debit transactions, account closure) represent the banking-specific (domain) events. The account's current balance represents the 'state' of the account. Replaying (sourcing) all the events from the beginning, in the order in which they appeared, always brings leads to the same result. 
 
-#### An "append-only log" data structure and service
+### An "append-only log" data structure and service
 
 As first step in refactoring the architecture, we 'replace' the configuration database with an 'append-only log' data structure. 
 
@@ -64,15 +68,15 @@ As first step in refactoring the architecture, we 'replace' the configuration da
 
 > Such an event stream could loosely be compared to a database's transaction log, in which all state changes to the various database tables are recorded sequentially as well. Replaying the transaction log allows the reconstruction of the database state, like in event sourcing.
 
-#### Event Hub: partitions, sequence numbers and offsets
+### Event Hub: partitions, sequence numbers and offsets
 
 An Event Hub internally has one or more '[partitions](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-scalability#partitions)'. A partition can be thought of as a unit of compute that hosts a single append-only commit log. When sending a message to the Event Hub endpoint, the sender can specify a 'partition key', which is a hashing function that maps the message to one of the partitions. All messages with the same partition key end up in the same partition,in which they are strictly ordered. Each message in a partition get's assigned a unique **sequence number**, a strictly monotonic increasing integer that uniquely identifies the message. For example, the very first message ever in a given partition would have sequence number #0, and the next message would have sequence number #1, and so on.
 
-#### Pulling events into the application
+### Pulling events into the application
 
 The illustration demonstrates the concept: The configuration source emits state update events into Event Hub (step c), and all running web app nodes receive (pull) their individual copy of these changes (steps d). We augment the application with an active component, that pulls a copy of the stream from the append-only log structure (Azure Event Hubs service), and locally applies these events / updates / deltas to the local copy of the configuration state. 
 
-![03-EventSourcing-Pure](2023-01-25--event-sourcing-1_03-EventSourcing-Pure.svg)
+![03-EventSourcing-Pure](img/2023-01-25--event-sourcing-1_03-EventSourcing-Pure.svg)
 
 The active component in the application needs to keep track of sequence numbers, so that the events are processed in the correct order, each event is processed exactly once, and no events are missed.
 
@@ -82,13 +86,13 @@ The following illustration demonstrates the foundational principle:
 - We have a function `f()`, which takes in the previous state (`s`) and an event (`e'`), and generates the next version of the state (`s'`). So the equation is `s' := f(s, e')`. For example, `s_500  = f(s_499, e_500)`, i.e. the event #500 would transform state #499 into state #500.
 - The very first event in the partition (`#0`) is applied to the empty `⌀` state, generating `state #0`, and so forth. Each new event would create a corresponding newer version of the state.
 
-![07-EventSourcing-Start](2023-01-25--event-sourcing-1_07-EventSourcing-Start.svg)
+![07-EventSourcing-Start](img/2023-01-25--event-sourcing-1_07-EventSourcing-Start.svg)
 
-#### Continuously following new messages
+### Continuously following new messages
 
 Append-only log structures usually offer a mechanism to continuously be notified about new messages arriving at the end of the log. In a Unix-based system, one would use `tail -f /var/log/messages` to 'follow the tail' of the log file, i.e. to continuously see when new lines are appended to the log file. In Azure Event Hubs, the client can remain connected to the Event Hub via a protocol such as AMQP or AMQP over Web Sockets, so that newly arriving messages get distributed to the consumers with minimal latency.
 
-#### Resuming operations
+## Resuming operations
 
 The state of the system depends on all events, ever received in the past. To compute the most recent state, one would have to start with an empty state store, and then re-play all events, from the beginning of time, until today. For practical purposes, that would be an unacceptable approach: when a new node in the web app joins the cluster, it would have to re-process configuration changes from months ago, just to have an up-to-date understanding of the latest configuration. 
 
@@ -98,7 +102,7 @@ In practice, there's a simple optimization: create state snapshots on a regular 
 
 To bring snapshot generation into the architecture, we introduce the "snapshot generation" component:
 
-![04-EventSourcing-with-Snapshots](2023-01-25--event-sourcing-1_04-EventSourcing-with-Snapshots.svg)
+![04-EventSourcing-with-Snapshots](img/2023-01-25--event-sourcing-1_04-EventSourcing-with-Snapshots.svg)
 
 That component regularly computes the most recent snapshot, and serializes the state into a file in object storage, such as Azure Blob storage.
 
@@ -106,11 +110,11 @@ When a new (uninitialized) web app node starts (or the snapshot generator itself
 
 The following diagram describes that process. After reading the state #314, the component starts reading the events #315 onwards, and applies them as well, to continuously compute to the most up-to-date representation of the state.
 
-![08-EventSourcing-ResumeHot](2023-01-25--event-sourcing-1_08-EventSourcing-ResumeHot.svg)
+![08-EventSourcing-ResumeHot](img/2023-01-25--event-sourcing-1_08-EventSourcing-ResumeHot.svg)
 
 
 
-#### Implementation internals
+### Implementation internals
 
 The internal component running in the web app could be represented like this: The function `f()` is initially fed with the most recent snapshot, and continuously feeds back the most recent state into itself, alongside with the events coming off Event Hub. The most recent state could be served within the memory of the application, such as via a global read-only property or a function call. 
 
@@ -118,7 +122,7 @@ Applying a state update event to the state might touch upon multiple areas of th
 
 > Using a functional programming language with immutable (unmodifiable) data structures can be of great help here. Examples of such languages could be F#, Scala, Rust or Elixir. While the term "immutable data structure" might sound wasteful or not very useful, it refers to the programming language's ability to represent state transitions. One can say "Give me a copy of this immutable object, with that property here having a different value". Such property modifications, alongside with the fact that large parts of the state might not change, allow to re-use large parts of the object graph.
 
-![05-DataPump](2023-01-25--event-sourcing-1_05-DataPump.svg)
+![05-DataPump](img/2023-01-25--event-sourcing-1_05-DataPump.svg)
 
 ### Historic events and Event Hub Capture
 
@@ -130,7 +134,7 @@ In our Event Sourcing system, it might be necessary to read messages that are ol
 
 The following diagram illustrates the practical use:
 
-![09-EventSourcing-ResumeFromCapture](2023-01-25--event-sourcing-1_09-EventSourcing-ResumeFromCapture.svg)
+![09-EventSourcing-ResumeFromCapture](img/2023-01-25--event-sourcing-1_09-EventSourcing-ResumeFromCapture.svg)
 
 In this situation, the most recent state snapshot corresponds to event #409, i.e. the next event that must be processed during state updates would be event #410 and following. Unfortunately, the oldest event in the Event Hub partition is event #412, i.e. the events #410 and and #411 cannot be read from Event Hub directly. 
 
@@ -143,5 +147,6 @@ However, the storage container configured for Event Hubs Capture contains Avro (
 ## Links
 
 - [Event Sourcing pattern (Azure Architecture Center)](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing)
+
 - [Event Sourcing, Greg Young, GOTO 2014](https://www.youtube.com/watch?v=8JKjvY4etTY)
 - [Why Event Sourcing is not easy, Mateusz Kubuszok, Lambda Days 2022](https://www.youtube.com/watch?v=eitMBfZgaBA)
