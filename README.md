@@ -1,3 +1,21 @@
+---
+title: Event-sourcing into working memory to improve data access latency
+description: <Write a 100-160 character description that ends with a period and ideally starts with a call to action. This becomes the browse card description.>
+author: chgeuer
+ms.author: chgeuer
+ms.date: 02/16/2023
+ms.topic: conceptual
+ms.service: architecture-center
+ms.subservice: azure-guide
+products:
+  - azure-event-hubs
+  - azure-blob-storage
+categories:
+  - analytics
+  - databases
+  - integration
+---
+
 # Event-sourcing into working memory to improve data access latency
 
 In this article, we describe a modernization, moving from a database-centric access pattern, towards event-sourcing data changes directly into the application's working memory (RAM). 
@@ -140,13 +158,22 @@ In this situation, the most recent state snapshot corresponds to event #409, i.e
 
 However, the storage container configured for Event Hubs Capture contains Avro (or Parquet) files containing these events. So after feeding the 2 rather old events into the pipeline, the logic can 'flip over' to the Event Hubs endpoint for the more recent events.
 
-## Summary
+## Contributors
 
+*This article is maintained by Microsoft. It was originally written by the following contributors.*
 
+Principal author: 
 
-## Links
+ * [Dr. Christian Geuer-Pollmann](https://www.linkedin.com/in/chgeuer/) | Principal Customer Engineer
 
-- [Event Sourcing pattern (Azure Architecture Center)](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing)
+## Next steps
 
-- [Event Sourcing, Greg Young, GOTO 2014](https://www.youtube.com/watch?v=8JKjvY4etTY)
-- [Why Event Sourcing is not easy, Mateusz Kubuszok, Lambda Days 2022](https://www.youtube.com/watch?v=eitMBfZgaBA)
+- Bulleted list of third-party and other Learn and Microsoft links.
+- Links shouldn't include en-us locale unless they don't work without it.
+- Learn links should be site-relative, for example (/azure/feature/article-name).
+- Don't include trailing slash in any links.
+
+## Related resources
+
+- [Event Sourcing pattern (Azure Architecture Center)](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing) **TODO Make repo-relative**
+- Video: [Event Sourcing, Greg Young, GOTO 2014](https://www.youtube.com/watch?v=8JKjvY4etTY)
