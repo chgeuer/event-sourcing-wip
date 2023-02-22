@@ -1,0 +1,23 @@
+### YamlMime:Architecture
+metadata:
+  title: Event-sourcing into working memory to improve data access latency
+  description: This pattern uses event sourcing to keep important data in-memory up-to-date for low-latency access, and helps avoiding slow database queries.
+  author: chgeuer
+  ms.author: chgeuer
+  ms.date: 02/16/2023
+  ms.topic: conceptual
+  ms.service: architecture-center
+  ms.subservice: solution-idea
+  social_image_url: /azure/architecture/browse/thumbs/eventsourcing-into-memory-thumb.svg
+name: Event-sourcing into memory
+summary: This pattern uses event sourcing to keep important data in-memory up-to-date for low-latency access, and helps avoiding slow database queries.
+azureCategories:
+  - analytics
+  - databases
+  - integration
+products:
+  - azure-event-hubs
+  - azure-blob-storage
+thumbnailUrl: /azure/architecture/browse/thumbs/eventsourcing-into-memory-thumb.svg
+content: |
+   [!include[](eventsourcing-into-memory-content.md)]
