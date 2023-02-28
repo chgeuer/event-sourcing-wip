@@ -20,9 +20,7 @@ The following illustration outlines our starting point:
 
 The *configuration source* abstractly represents the part of the system that changes the configuration, such as business administrators or automated processes.
 
-![](../media/eventsourcing-into-memory_01-Regular-SQL.png)
-
-*Download an [SVG](../media/eventsourcing-into-memory_01-Regular-SQL.svg) of this architecture.*
+![Architecture showing the system using a regular relational database](../media/eventsourcing-into-memory_01-Regular-SQL.svg)
 
 ### Caching in the ORM
 
@@ -30,9 +28,7 @@ Applications typically access a relational database via technology like an objec
 
 The following diagram represents the ORM as a 'local cache' inside the web application:
 
-![](../media/eventsourcing-into-memory_02-Cached-SQL.png)
-
-*Download an [SVG](../media/eventsourcing-into-memory_02-Cached-SQL.svg) of this architecture.*
+![Slightly updated architecture showing application-level caching](../media/eventsourcing-into-memory_02-Cached-SQL.svg)
 
 #### Going to extremes - Caching the whole database
 
@@ -43,7 +39,6 @@ This approach removes the need to query the configuration database during the re
 Unfortunately, it also brings significant downsides: 
 
 - **Application start times:** It takes too long to launch the application, due to the pre-warming process, which has to download the full database. During that phase, the application isn't ready to respond to incoming requests. This startup delay can become a problem in scale-out situations: imagine an unforeseen spike in the number of incoming requests, for example due to a TV commercial. When a scaling logic increases the number of web server instances, it would take quite some time until these new nodes can help handling incoming traffic; the spike might already have created problems overloading the other nodes.
-
 - **Database load:** Consider how the load pattern affects the database: During such a scale-out event, a potentially large number of servers intensely queries the database at the same time, potentially overloading the database. A '[thundering herd](https://en.wikipedia.org/wiki/Thundering_herd_problem)' of customers in the web tier leads to a scale-out action and results in a thundering herd of web servers bringing down the database.
 - **Configuration updates:** Runtime updates to the configuration database aren't reaching the web application any longer: When the application caches everything once in RAM on startup, and the ORM no longer queries the database, it doesn't pull updated data from the configuration database into the application. In the past, we have seen customers who 'solved' this problem by rebooting all web servers, one after the other, to force each rebooting web server to fetch the entire database *again*, this time with the updated configuration.
 
@@ -94,9 +89,7 @@ The illustration demonstrates the concept:
 
 We augment the application with an active component, which that pulls a copy of the stream from the append-only log structure (Azure Event Hubs service). The component then locally applies these events / updates / deltas to the local copy of the configuration state. 
 
-![](../media/eventsourcing-into-memory_03-EventSourcing-Pure.png)
-
-*Download an [SVG](../media/eventsourcing-into-memory_03-EventSourcing-Pure.svg) of this architecture.*
+![Architecture introducing event sourcing](../media/eventsourcing-into-memory_03-EventSourcing-Pure.svg)
 
 The application's active component tracks the events' sequence numbers, enforces correct processing order and ensures exactly once processing. The following illustration demonstrates the foundational principle: 
 
@@ -104,10 +97,7 @@ The application's active component tracks the events' sequence numbers, enforces
 - We have a function `f()`, which takes in the previous state (`s`) and an event (`e'`), and generates the next version of the state (`s'`). So the equation is `s' := f(s, e')`. For example, `s_500  = f(s_499, e_500)`, that is, the event #500 would transform state #499 into state #500.
 - The logic applies the first event in the partition (`#0`) to the empty `⌀` state, to generate `state #0`, and so forth. Each new event creates a corresponding newer version of the state.
 
-
-![](../media/eventsourcing-into-memory_07-EventSourcing-Start.png)
- 
-*Download an [SVG](../media/eventsourcing-into-memory_07-EventSourcing-Start.svg) of this architecture.*
+![Algorithm illustration for event sourcing from an empty state](../media/eventsourcing-into-memory_07-EventSourcing-Start.svg)
 
 ### Continuously following new messages
 
@@ -127,9 +117,7 @@ In practice, there's a simple optimization: create state snapshots on a regular 
 
 To bring snapshot generation into the architecture, we introduce the "snapshot generation" component:
 
-![](../media/eventsourcing-into-memory_04-EventSourcing-with-Snapshots.png)
-
-*Download an [SVG](../media/eventsourcing-into-memory_04-EventSourcing-with-Snapshots.svg) of this architecture.*
+![Architecture adding snapshot generation](../media/eventsourcing-into-memory_04-EventSourcing-with-Snapshots.svg)
 
 That component regularly computes the most recent snapshot, and serializes the state into a file in object storage, such as Azure Blob storage.
 
@@ -137,9 +125,8 @@ When a new (uninitialized) web app node starts (or the snapshot generator itself
 
 The following diagram describes that process. After the component reads state #314, it starts reading the events #315 onwards, and applies them as well, to continuously compute to the most up-to-date representation of the state.
 
-![](../media/eventsourcing-into-memory_08-EventSourcing-ResumeHot.png)
+![Algorithm illustration for event sourcing resuming from an existing state](../media/eventsourcing-into-memory_08-EventSourcing-ResumeHot.svg)
 
-*Download an [SVG](../media/eventsourcing-into-memory_08-EventSourcing-ResumeHot.svg) of this architecture.*
 
 ### Implementation internals
 
@@ -149,9 +136,7 @@ Applying a state update event to the state might touch upon multiple areas of th
 
 > Using a functional programming language with immutable (unmodifiable) data structures can be of great help here. Examples of such languages could be F#, Scala, Rust or Elixir. While the term "immutable data structure" might sound wasteful or not very useful, it refers to the programming language's ability to represent state transitions. One can say "Give me a copy of this immutable object, with that property here having a different value". Such property modifications, alongside with the fact that large parts of the state might not change, allow to reuse large parts of the object graph.
 
-![](../media/eventsourcing-into-memory_05-DataPump.png)
-
-*Download an [SVG](../media/eventsourcing-into-memory_05-DataPump.svg) of this architecture.*
+![The internals of the data pump](../media/eventsourcing-into-memory_05-DataPump.svg)
 
 ### Historic events and Event Hubs Capture
 
@@ -165,15 +150,13 @@ To help with that problem, you can enable **Event Hubs Capture** to fully keep t
 
 The following diagram illustrates the practical use:
 
-![](../media/eventsourcing-into-memory_09-EventSourcing-ResumeFromCapture.png)
-
-*Download an [SVG](../media/eventsourcing-into-memory_09-EventSourcing-ResumeFromCapture.svg) of this architecture.*
+![Architecture showing how to resume event source stream from Event Hubs Capture](../media/eventsourcing-into-memory_09-EventSourcing-ResumeFromCapture.svg)
 
 In this situation, the most recent state snapshot corresponds to event #409, so that the system must process event #410 and following next. Unfortunately, the oldest event in the event hub partition is event #412, so that events #410 and #411 aren't available from the partition directly. 
 
 However, the storage container configured for Event Hubs Capture contains Avro (or Parquet) files containing these events. After the logic feeds the two rather old events into the pipeline, it can 'flip over' to the Event Hubs endpoint for the more recent events.
 
-## When can this pattern be applicable?
+## When to use this pattern
 
 The pattern in this document can be helpful in the following situations: 
 
@@ -282,11 +265,11 @@ To learn more about event sourcing, you might consider exploring a related few a
 
 ## Contributors
 
-*Microsoft maintains this article. The following contributors wrote it:*
+*Microsoft maintains this article. The following contributor(s) wrote it:*
 
 Principal author: 
 
- * [Dr. Christian Geuer-Pollmann](https://www.linkedin.com/in/chgeuer/) ([@chgeuer](https://github.com/chgeuer)) | Principal Customer Engineer
+ * [Dr. Christian Geuer-Pollmann](https://www.linkedin.com/in/chgeuer/) | Principal Customer Engineer
 
 ## Related resources
 
@@ -294,5 +277,7 @@ Principal author:
   - [Partitioning in Event Hubs and Kafka](../../reference-architectures/event-hubs/partitioning-in-event-hubs-and-kafka.yml)
   - The [Event Sourcing pattern](../../patterns/event-sourcing.yml)
   - The [CQRS pattern](../../patterns/cqrs.yml)
-- [Event Sourcing, Greg Young, GOTO 2014 Conference (YouTube)](https://www.youtube.com/watch?v=8JKjvY4etTY)
+- Free e-book download: [Exploring CQRS and Event Sourcing- A journey into high scalability, availability, and maintainability with Windows Azure (PDF)](https://www.microsoft.com/en-us/download/details.aspx?id=34774)
+- [Versioning in an Event Sourced System, Gregory Young](https://leanpub.com/esversioning/read)
+- Video: [Event Sourcing, Gregory Young, GOTO 2014 Conference (YouTube)](https://www.youtube.com/watch?v=8JKjvY4etTY)
 - [Event Sourcing, Martin Fowler](https://martinfowler.com/eaaDev/EventSourcing.html)
